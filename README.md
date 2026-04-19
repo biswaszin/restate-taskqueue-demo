@@ -1,2 +1,2 @@
 # restate-taskqueue-demo
-Task Queue Dem
+Task Queue Demo
