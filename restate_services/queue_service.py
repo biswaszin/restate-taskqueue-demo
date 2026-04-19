@@ -5,12 +5,14 @@ from restate_services.task_tracker import TaskTrackerStore
 from mocks.ldx_mock import run_mock_convert
 from mocks.ai_mock import run_mock_ai
 from app.config import JSON_OUT_DIR, XML_OUT_DIR
+from restate_services.task_logger import log_task_event
 
 queue_store = PriorityQueueStore()
 tracker_store = TaskTrackerStore()
 
 
 def submit_task(user_id: str, tier: str, file_path: str, original_filename: str) -> Dict[str, Any]:
+    
     task = Task.create(
         user_id=user_id,
         tier=tier,
@@ -20,6 +22,15 @@ def submit_task(user_id: str, tier: str, file_path: str, original_filename: str)
 
     tracker_store.init_task(task)
     queue_store.enqueue(task)
+    log_task_event(
+        task["task_id"],
+        "task_enqueued",
+        {
+            "tier": task["tier"],
+            "priority": task["priority"],
+            "created_at": task["created_at"],
+        },
+    )
 
     print(f"[SUBMIT] task={task['task_id']} tier={tier} priority={task['priority']}")
     return {
@@ -30,10 +41,22 @@ def submit_task(user_id: str, tier: str, file_path: str, original_filename: str)
 
 
 def process_next_task() -> Dict[str, Any]:
+
     task = queue_store.dequeue_next()
     if not task:
         return {"status": "no_tasks"}
 
+    task_id = task["task_id"]
+    log_task_event(
+        task_id,
+        "task_dequeued",
+        {
+             "tier": task["tier"],
+            "priority": task["priority"],
+        },
+)
+
+# restate-taskqueue-demo
     task_id = task["task_id"]
     try:
         print(f"[DEQUEUE] task={task_id} tier={task['tier']} priority={task['priority']}")
