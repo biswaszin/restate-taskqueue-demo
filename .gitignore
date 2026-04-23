@@ -138,7 +138,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
-.venv
+.venv-restate
 env/
 venv/
 ENV/
@@ -207,3 +207,14 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .DS_Store
+
+# Ignore everything inside these folders
+storage/uploads/*
+storage/outputs/*
+
+# But keep placeholder files so folders are tracked
+!storage/uploads/.gitkeep
+!storage/outputs/.gitkeep
+
+# Runtime data
+restate-data

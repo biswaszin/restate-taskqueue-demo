@@ -4,11 +4,7 @@ from typing import Any
 import json
 import uuid
 
-try:
-    from restate import VirtualObject, Context
-except Exception:
-    from restate import VirtualObject  # type: ignore
-    from restate.context import Context  # type: ignore
+from restate import VirtualObject, Context
 
 
 UPLOADS_DIR = Path("storage/uploads")
@@ -27,7 +23,7 @@ def now_iso() -> str:
 
 def tier_priority(tier: str) -> int:
     t = (tier or "").lower()
-    return {"tier1": 1, "tier2": 2, "tier3": 3}.get(t, 99)
+    return {"tier1": 1, "tier2": 2, "tier3": 3, "free": 4}.get(t, 99)
 
 
 def log_line(message: str) -> None:
@@ -36,6 +32,8 @@ def log_line(message: str) -> None:
 
 
 def as_dict(req: Any) -> dict[str, Any]:
+    if req is None:
+        return {}
     if isinstance(req, dict):
         return req
     if hasattr(req, "__dict__"):
@@ -47,7 +45,7 @@ task_service = VirtualObject("TaskService")
 
 
 @task_service.handler("submit")
-async def submit(ctx: Context, req: Any):
+async def submit(ctx: Context, req: Any = None):
     data = as_dict(req)
     user_id = data.get("user_id", "")
     tier = data.get("tier", "tier3")
@@ -80,14 +78,12 @@ async def submit(ctx: Context, req: Any):
     queue_index.append(task_id)
     ctx.set("queue/index", queue_index)
 
-    log_line(
-        f"QUEUED task_id={task_id} user_id={user_id} tier={tier} file={safe_name}"
-    )
+    log_line(f"QUEUED task_id={task_id} user_id={user_id} tier={tier} file={safe_name}")
     return {"ok": True, "task": task}
 
 
 @task_service.handler("enqueue_batch")
-async def enqueue_batch(ctx: Context, req: Any):
+async def enqueue_batch(ctx: Context, req: Any = None):
     data = as_dict(req)
     users = data.get("users", [])
     created_ids: list[str] = []
@@ -114,7 +110,7 @@ async def enqueue_batch(ctx: Context, req: Any):
 
 
 @task_service.handler("get")
-async def get_task(ctx: Context, req: Any):
+async def get_task(ctx: Context, req: Any = None):
     data = as_dict(req)
     task_id = data.get("task_id", "")
     task = await ctx.get(f"task/{task_id}")
@@ -124,7 +120,8 @@ async def get_task(ctx: Context, req: Any):
 
 
 @task_service.handler("list")
-async def list_tasks(ctx: Context):
+async def list_tasks(ctx: Context, req: Any = None):
+    _ = as_dict(req)  # ignore body if sent
     queue_index = await ctx.get("queue/index")
     if queue_index is None:
         queue_index = []
@@ -139,7 +136,7 @@ async def list_tasks(ctx: Context):
 
 
 @task_service.handler("process")
-async def process(ctx: Context, req: Any):
+async def process(ctx: Context, req: Any = None):
     data = as_dict(req)
     task_id = data.get("task_id", "")
     task = await ctx.get(f"task/{task_id}")
@@ -189,7 +186,7 @@ async def process(ctx: Context, req: Any):
 
 
 @task_service.handler("tick")
-async def tick(ctx: Context, req: Any):
+async def tick(ctx: Context, req: Any = None):
     data = as_dict(req)
     max_items = int(data.get("max_items", 5) or 5)
 
@@ -203,9 +200,7 @@ async def tick(ctx: Context, req: Any):
         if t and t.get("status") == "queued":
             queued_tasks.append(t)
 
-    queued_tasks.sort(
-        key=lambda t: (t.get("priority", 99), t.get("created_at", ""))
-    )
+    queued_tasks.sort(key=lambda t: (t.get("priority", 99), t.get("created_at", "")))
     selected = queued_tasks[: max(1, max_items)]
 
     processed_ids = []
@@ -214,19 +209,13 @@ async def tick(ctx: Context, req: Any):
         if out.get("ok"):
             processed_ids.append(t["task_id"])
 
-    log_line(
-        f"TICK processed_count={len(processed_ids)} "
-        f"task_ids={processed_ids}"
-    )
-    return {
-        "ok": True,
-        "processed_count": len(processed_ids),
-        "processed_task_ids": processed_ids,
-    }
+    log_line(f"TICK processed_count={len(processed_ids)} task_ids={processed_ids}")
+    return {"ok": True, "processed_count": len(processed_ids), "processed_task_ids": processed_ids}
 
 
 @task_service.handler("results")
-async def results(ctx: Context):
+async def results(ctx: Context, req: Any = None):
+    _ = as_dict(req)  # ignore body if sent
     queue_index = await ctx.get("queue/index")
     if queue_index is None:
         queue_index = []
